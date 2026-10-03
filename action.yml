@@ -52,8 +52,13 @@ runs:
       shell: bash
       env:
         BASE: ${{ inputs.base }}
-        RATCHET_GATES_RUFF_CODES: ${{ inputs.ruff-codes }}
+        RUFF_CODES_INPUT: ${{ inputs.ruff-codes }}
       run: |
+        # Export only when non-empty. Exporting an empty value would shadow the
+        # CLI's default code set, and an empty extend-select selects nothing.
+        if [ -n "$RUFF_CODES_INPUT" ]; then
+          export RATCHET_GATES_RUFF_CODES="$RUFF_CODES_INPUT"
+        fi
         set +e
         out="$(python3 "${{ github.action_path }}/src/ratchet_gates/cli.py" \
           --repo "${{ github.workspace }}" \

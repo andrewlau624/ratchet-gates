@@ -46,11 +46,11 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _run_cli(repo: Path) -> subprocess.CompletedProcess[str]:
+def _run_cli(repo: Path, **extra_env: str) -> subprocess.CompletedProcess[str]:
     path = cli.os.environ["PATH"]
     if VENV_BIN.is_dir():
         path = f"{VENV_BIN}:{path}"
-    env = dict(cli.os.environ, PATH=path)
+    env = dict(cli.os.environ, PATH=path, **extra_env)
     return subprocess.run(
         [sys.executable, "-m", "ratchet_gates", "--repo", str(repo)],
         cwd=TOOL_ROOT,
@@ -105,3 +105,22 @@ def test_banned_api_fails(repo: Path):
     proc = _run_cli(repo)
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "banned-api" in proc.stdout
+
+
+def test_empty_ruff_code_override_falls_back_to_defaults(repo: Path):
+    """An empty override must not silently select nothing.
+
+    `os.environ.get(name, default)` returns "" when the variable is SET but
+    empty, so an empty override would build `lint.extend-select=[]` and disable
+    every code the gate adds. The gate would then report PASS on precisely the
+    violations it exists to catch. The composite action hit this: it exported
+    the input unconditionally, and the input defaults to "".
+    """
+    (repo / "bad.py").write_text(
+        "def f():\n    import json\n    return json.dumps({})\n"
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "bad"], cwd=repo, check=True)
+    proc = _run_cli(repo, RATCHET_GATES_RUFF_CODES="")
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "PLC0415" in proc.stdout

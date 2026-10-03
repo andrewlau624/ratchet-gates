@@ -17,6 +17,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# The codes the gate adds on top of the repo's own ruff config. Overridable
+# with RATCHET_GATES_RUFF_CODES, but an EMPTY value falls back to this rather
+# than selecting nothing — an empty extend-select silently disables every rule
+# the gate exists to add, and a gate that checks nothing reports PASS forever.
+DEFAULT_RUFF_CODES = "PLC0415,TRY400,UP,TID251,ASYNC,RUF006,RUF100,PGH003,PGH004"
+
 
 @dataclass
 class GateResult:
@@ -127,11 +133,10 @@ def ruff_gate(cwd: Path, base: str, files: list[str]) -> GateResult:
         os.environ,
         PATH=":".join([*tool_dirs, os.environ.get("PATH", "")]),
     )
-    extra = os.environ.get(
-        "RATCHET_GATES_RUFF_CODES",
-        "PLC0415,TRY400,UP,TID251,ASYNC,RUF006,RUF100,PGH003,PGH004",
-    )
+    extra = os.environ.get("RATCHET_GATES_RUFF_CODES") or DEFAULT_RUFF_CODES
     quoted = ",".join(f'"{c.strip()}"' for c in extra.split(",") if c.strip())
+    if not quoted:
+        return GateResult("ruff-diff", False, "ruff code set resolved to empty")
     proc = _run(
         [
             ruff,
