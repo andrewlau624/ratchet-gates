@@ -133,8 +133,16 @@ analyzer gets disabled by its users whether or not its author agrees.
 
 ## CLI
 
+> **Install from a clone, not from a wheel.** `rules/` is not packaged into the
+> distribution, so `pip install git+https://…` produces a CLI whose semgrep gate
+> reports `no bundled semgrep rules` and **passes silently**. The GitHub Action
+> is unaffected — it runs from the checked-out action directory, which has the
+> rules. Tracked as [issue #1](https://github.com/andrewlau624/ratchet-gates/issues/1).
+
 ```bash
-pip install git+https://github.com/andrewlau624/ratchet-gates.git
+git clone https://github.com/andrewlau624/ratchet-gates.git
+cd ratchet-gates && make install
+ln -s "$PWD/.venv/bin/ratchet-gates" /usr/local/bin/ratchet-gates   # optional
 
 ratchet-gates --repo .                      # run the gates here
 ratchet-gates --self-check                  # run the tool's own test suite

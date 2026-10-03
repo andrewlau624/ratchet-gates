@@ -8,9 +8,14 @@ for the rules it covers.
 ## 1. Pre-push self-check — the part you control
 
 ```bash
-pip install git+https://github.com/andrewlau624/ratchet-gates.git
-ratchet-gates --repo .
+git clone https://github.com/andrewlau624/ratchet-gates.git
+cd ratchet-gates && make install
+.venv/bin/ratchet-gates --repo /path/to/your/repo
 ```
+
+Install from a clone, not `pip install git+https://…`: `rules/` is not packaged
+into the distribution, so a wheel install reports `no bundled semgrep rules` and
+passes that gate silently. The Action is unaffected.
 
 Exit `0` means mergeable. Exit `2` means **new** violations you introduced and
 must fix. Exit `3` means a gate tool is missing or crashed — that is a failure,
