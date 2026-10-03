@@ -57,7 +57,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The adoption ref documented in the README is v1 and stays v1 until a
+          # breaking change ships. Pre-1.0 releases all serve @v1 rather than a
+          # @v0 nobody would think to write; `cut` alone would emit v0 here.
           major="$(echo "${GITHUB_REF_NAME}" | cut -d. -f1)"   # v1.2.3 -> v1
+          if [ "$major" = "v0" ]; then major="v1"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -f "$major" "${GITHUB_REF_NAME}"
