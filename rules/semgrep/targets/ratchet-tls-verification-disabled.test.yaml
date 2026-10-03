@@ -1,0 +1,2 @@
+# ruleid: ratchet-tls-verification-disabled
+insecureSkipTLSVerify: true

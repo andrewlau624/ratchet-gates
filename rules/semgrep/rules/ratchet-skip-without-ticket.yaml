@@ -1,0 +1,61 @@
+# Custom semgrep rules for defect classes no off-the-shelf ruff/eslint code
+# covers.
+#
+# PROVENANCE: these rules were authored from a review audit of 8,563 pull
+# requests across 23 repositories — they are a STARTER SET, not a standard.
+# Replace any of them. The engine does not care what the rules say; it cares
+# that each one has a fixture proving it still matches.
+#
+# MANDATORY BEFORE ENABLING ANY RULE:
+#   1. Write fixtures with `# ruleid: <id>` and `# ok: <id>` annotations in
+#      rules/semgrep/targets/.
+#   2. `semgrep --test --config rules/semgrep/rules/ rules/semgrep/targets/`
+#   3. Ship at WARNING for two weeks, collect the exception set, then promote
+#      to ERROR.
+#
+# A rule with no fixture is a silent false negative waiting for a refactor:
+# a rule that stops matching reports PASS forever, which is indistinguishable
+# from compliance. That is the single failure mode this whole tool exists to
+# remove, so the fixtures are not optional.
+#
+# RATCHET: do not scan the whole tree and hope. The gate runs:
+#   semgrep scan --config rules/semgrep/rules/ \
+#     --baseline-commit "$(git merge-base origin/main HEAD)" --error
+# This requires actions/checkout with fetch-depth: 0 and a clean worktree at
+# that point in the pipeline (semgrep aborts on unstaged changes). A shallow
+# clone has no merge-base, which semgrep scores as "no new findings" and
+# PASSES — a green check that measured nothing.
+#
+# PATH COVERAGE: every `paths:` block below is an explicit decision. Getting
+# it wrong is measurable and was measured: after convention gates landed in
+# the audited org, function-local imports fell 155 -> 21 on production paths
+# and ROSE to 49 on test paths; hasattr/getattr fell 44 -> 8 in production and
+# rose 1 -> 14 in tests. Excluding tests does not remove the violations, it
+# relocates them. There is no test-file exclusion here except where tests are
+# the explicit target.
+
+rules:
+- id: ratchet-skip-without-ticket
+  languages:
+  - python
+  severity: ERROR
+  message: 'A skipped test with no reason and no ticket is a permanently green hole. Use `@pytest.mark.skip(reason="TICKET-1234:
+    <what has to be true to unskip>")`. Pair this rule with a skip-count ratchet so the total can only
+    shrink.'
+  metadata:
+    category: TEST_GAP M9
+    measured-distinct-prs: 13
+    phase: 1
+    validate: fixtures for skip / skipif / xfail
+  patterns:
+  - pattern-either:
+    - pattern: '@pytest.mark.skip'
+    - pattern: '@pytest.mark.skip()'
+    - pattern: pytest.skip()
+  - pattern-not: '@pytest.mark.skip(reason="...")'
+  - pattern-not: pytest.skip("...")
+  paths:
+    include:
+    - '**/*_test.py'
+    - '**/test_*.py'
+    - '**/tests/**/*.py'

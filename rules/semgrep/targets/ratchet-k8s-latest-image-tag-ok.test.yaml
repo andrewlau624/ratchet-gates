@@ -1,0 +1,2 @@
+# ok: ratchet-k8s-latest-image-tag
+image: registry.example.com/app:v1.2.3

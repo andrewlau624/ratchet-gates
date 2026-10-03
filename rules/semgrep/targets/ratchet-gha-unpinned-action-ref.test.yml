@@ -1,0 +1,2 @@
+# ruleid: ratchet-gha-unpinned-action-ref
+- uses: third-party/action@main

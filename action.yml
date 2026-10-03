@@ -1,0 +1,96 @@
+name: Ratchet Gates
+description: >-
+  Ratcheted deterministic code-quality gates. Findings are filtered to the
+  lines the pull request ADDED, so legacy violations never block adoption and
+  no suppression sweep is needed. Mark this check required in the branch
+  ruleset to turn it from a notification into a gate.
+author: andrewlau624
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  base:
+    description: >-
+      Base commit for the ratchet. Defaults to the merge-base with the default
+      branch, which is correct for normal pull requests. Override only for
+      unusual branch topology.
+    required: false
+    default: ""
+  ruff-codes:
+    description: >-
+      The full ruff code set the gate selects, REPLACING the bundled default
+      (PLC0415, TRY400, UP, TID251, ASYNC, RUF006, RUF100, PGH003, PGH004).
+      These are added to the repo's own ruff config via `lint.extend-select`,
+      so the repo's existing ignores and exclusions are preserved.
+    required: false
+    default: ""
+  semgrep-severity:
+    description: "Semgrep severity gate (ERROR / WARNING). Default ERROR."
+    required: false
+    default: "ERROR"
+
+outputs:
+  result:
+    description: "CLEAN | NEW_VIOLATIONS | TOOLING_FAILURE"
+    value: ${{ steps.gates.outputs.result }}
+  summary:
+    description: "Human-readable gate summary (the full gate log)"
+    value: ${{ steps.gates.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install gate toolchain
+      shell: bash
+      run: pip install --quiet ruff semgrep
+
+    # Runs the gates and always exits 0, so the outputs below are reliably
+    # published. The verdict is enforced by the next step.
+    - name: Run gates
+      id: gates
+      shell: bash
+      env:
+        BASE: ${{ inputs.base }}
+        RATCHET_GATES_RUFF_CODES: ${{ inputs.ruff-codes }}
+      run: |
+        set +e
+        out="$(python3 "${{ github.action_path }}/src/ratchet_gates/cli.py" \
+          --repo "${{ github.workspace }}" \
+          ${BASE:+--base "$BASE"} \
+          --semgrep-severity "${{ inputs.semgrep-severity }}" 2>&1)"
+        rc=$?
+        set -e
+        printf '%s\n' "$out"
+        case "$rc" in
+          0) result=CLEAN ;;
+          2) result=NEW_VIOLATIONS ;;
+          *) result=TOOLING_FAILURE ;;
+        esac
+        {
+          echo "result=$result"
+          echo "exit-code=$rc"
+          echo "summary<<RATCHET_GATES_SUMMARY_EOF"
+          printf '%s\n' "$out"
+          echo "RATCHET_GATES_SUMMARY_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Enforce gate verdict
+      shell: bash
+      env:
+        RESULT: ${{ steps.gates.outputs.result }}
+        RC: ${{ steps.gates.outputs.exit-code }}
+      run: |
+        case "$RESULT" in
+          CLEAN)
+            echo "::notice title=ratchet-gates::CLEAN — no new violations on changed lines"
+            ;;
+          NEW_VIOLATIONS)
+            echo "::error title=ratchet-gates::NEW_VIOLATIONS — see the gate log above"
+            exit "$RC"
+            ;;
+          *)
+            echo "::error title=ratchet-gates::TOOLING_FAILURE — a required gate tool is missing or crashed. A tool that cannot run is a failure, not a pass."
+            exit "$RC"
+            ;;
+        esac

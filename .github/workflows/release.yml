@@ -1,0 +1,72 @@
+name: release
+
+# Publishes a release for a v* tag and moves the floating major tag so
+# `uses: andrewlau624/ratchet-gates@v1` resolves to the newest v1.x.y.
+# action.yml is a composite action — there is nothing to build, only to tag.
+on:
+  push:
+    # Semver tags only. The floating major tag (v1) is moved BY this workflow,
+    # so matching it here would re-trigger the job against a tag that can never
+    # equal the pyproject version.
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          pip install --quiet -e .
+          pip install --quiet ruff semgrep pytest
+
+      # Never publish a tag whose self-check is red.
+      - name: Run gate suite
+        run: python -m ratchet_gates --self-check
+
+      - name: Tag version matches pyproject version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          proj="$(python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          if [ "$tag" != "$proj" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pyproject version $proj"
+            exit 1
+          fi
+
+  release:
+    name: release
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move the floating major tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          major="$(echo "${GITHUB_REF_NAME}" | cut -d. -f1)"   # v1.2.3 -> v1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$major" "${GITHUB_REF_NAME}"
+          git push -f origin "refs/tags/$major"
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

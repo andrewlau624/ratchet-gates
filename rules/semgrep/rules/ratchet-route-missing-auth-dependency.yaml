@@ -1,0 +1,66 @@
+# Custom semgrep rules for defect classes no off-the-shelf ruff/eslint code
+# covers.
+#
+# PROVENANCE: these rules were authored from a review audit of 8,563 pull
+# requests across 23 repositories — they are a STARTER SET, not a standard.
+# Replace any of them. The engine does not care what the rules say; it cares
+# that each one has a fixture proving it still matches.
+#
+# MANDATORY BEFORE ENABLING ANY RULE:
+#   1. Write fixtures with `# ruleid: <id>` and `# ok: <id>` annotations in
+#      rules/semgrep/targets/.
+#   2. `semgrep --test --config rules/semgrep/rules/ rules/semgrep/targets/`
+#   3. Ship at WARNING for two weeks, collect the exception set, then promote
+#      to ERROR.
+#
+# A rule with no fixture is a silent false negative waiting for a refactor:
+# a rule that stops matching reports PASS forever, which is indistinguishable
+# from compliance. That is the single failure mode this whole tool exists to
+# remove, so the fixtures are not optional.
+#
+# RATCHET: do not scan the whole tree and hope. The gate runs:
+#   semgrep scan --config rules/semgrep/rules/ \
+#     --baseline-commit "$(git merge-base origin/main HEAD)" --error
+# This requires actions/checkout with fetch-depth: 0 and a clean worktree at
+# that point in the pipeline (semgrep aborts on unstaged changes). A shallow
+# clone has no merge-base, which semgrep scores as "no new findings" and
+# PASSES — a green check that measured nothing.
+#
+# PATH COVERAGE: every `paths:` block below is an explicit decision. Getting
+# it wrong is measurable and was measured: after convention gates landed in
+# the audited org, function-local imports fell 155 -> 21 on production paths
+# and ROSE to 49 on test paths; hasattr/getattr fell 44 -> 8 in production and
+# rose 1 -> 14 in tests. Excluding tests does not remove the violations, it
+# relocates them. There is no test-file exclusion here except where tests are
+# the explicit target.
+
+rules:
+- id: ratchet-route-missing-auth-dependency
+  languages:
+  - python
+  severity: ERROR
+  message: 'New route with no authentication dependency. Tier S1 in the security taxonomy: this and missing
+    tenant scope are the only modes whose worst case is a breach-notification event, and both had a CRITICAL
+    external-audit instances (including a BOLA finding) that review missed entirely. Add the auth dependency,
+    or add the path to `.semgrep/public-routes.yaml` with a reviewer named on the entry.'
+  metadata:
+    category: SECURITY M2, tier S1
+    phase: 2
+    blocked-on: A reviewed public-routes allowlist must exist first. Without it this rule fires on every
+      intentionally public route, which is the fastest way to get a security gate disabled. DO NOT ENABLE
+      AS WRITTEN.
+    validate: "FIXTURES REQUIRED, plus the allowlist mechanism, which semgrep cannot express on its own\
+      \ \u2014 this probably has to become a scripts/ci/check_route_auth.py that reads the YAML."
+  patterns:
+  - pattern-either:
+    - pattern: "@$ROUTER.get(...)\ndef $H(...):\n    ...\n"
+    - pattern: "@$ROUTER.post(...)\ndef $H(...):\n    ...\n"
+    - pattern: "@$ROUTER.get(...)\nasync def $H(...):\n    ...\n"
+    - pattern: "@$ROUTER.post(...)\nasync def $H(...):\n    ...\n"
+  - pattern-not: "@$ROUTER.$METHOD(...)\nasync def $H(..., $ARG = Depends(...), ...):\n    ...\n"
+  - pattern-not: "@$ROUTER.$METHOD(..., dependencies=[...], ...)\nasync def $H(...):\n    ...\n"
+paths:
+  include:
+  - '**/router/**/*.py'
+  - '**/api/**/*.py'
+  - '**/routes/**/*.py'

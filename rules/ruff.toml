@@ -1,0 +1,40 @@
+# ratchet-gates ruff config — the enforcement delta from the 8,563-PR audit.
+# Used by the ruff-diff gate so repos do not have to edit their own
+# pyproject.toml. Findings are scoped to lines the PR added by the gate
+# itself (see `_added_lines` in cli.py) — no external diff tool involved.
+#
+# Measured coverage (distinct-PR findings in the corpus):
+#   PLC0415 function-local imports        320 PRs (org-wide #1)
+#   TRY400  logger.error in except        345 threads / 195 PRs (#2)
+#   UP      (UP045 etc.)                    +  UP = 672 total across 4 codes
+#   TID251  wrapped-SDK imports            semantic -> mechanical for SES case
+#   ASYNC   entire ruleset unenabled       2,046 rows in the ASYNC bucket
+#   RUF006  dangling asyncio tasks         gateway #78 is the rule's own docstring
+# Also ratchet-suppression bans: RUF100 (unused-noqa), PGH003/004 (blanket
+# type-ignore / noqa without a code). Blanket suppression was the measured way
+# the org's type-ignore "decline" was gamed (resolves at 8% vs 31-41% elsewhere).
+
+[lint]
+select = [
+  "E", "W", "F", "I",
+  "UP",
+  "PLC0415",
+  "TRY400",
+  "TID251",
+  "TID252",
+  "ASYNC",
+  "RUF006",
+  "RUF100",
+  "PGH003",
+  "PGH004",
+]
+ignore = []
+
+[lint.per-file-ignores]
+# The one justified exemption: deps/ is the sanctioned place to touch raw SDKs.
+"deps/**" = ["TID251"]
+
+[lint.flake8-tidy-imports.banned-api]
+boto3 = { msg = "import boto3 directly is banned; use deps/ses.py (get_sesv2_client / send_email)" }
+qdrant-client = { msg = "use deps/qdrant.py" }
+redis = { msg = "use deps/redis.py" }

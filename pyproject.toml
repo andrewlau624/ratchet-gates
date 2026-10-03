@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ratchet-gates"
+version = "0.1.0"
+description = "Ratcheted deterministic code-quality gates: fail only on violations the diff introduced"
+requires-python = ">=3.11"
+
+[project.scripts]
+ratchet-gates = "ratchet_gates.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ratchet_gates"]

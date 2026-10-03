@@ -1,0 +1,36 @@
+name: self-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  self-check:
+    name: self-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          pip install --quiet -e .
+          pip install --quiet ruff semgrep pytest
+
+      # A gate tool that ships a red self-check has no claim on anyone else's
+      # pipeline. This is the required check on main.
+      - name: Run gate suite
+        run: python -m ratchet_gates --self-check

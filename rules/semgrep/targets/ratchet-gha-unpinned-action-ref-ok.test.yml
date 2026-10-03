@@ -1,0 +1,2 @@
+# ok: ratchet-gha-unpinned-action-ref
+- uses: actions/checkout@v4

@@ -1,0 +1,265 @@
+# GENERATED FILE — do not edit.
+#
+# Consolidated from rules/semgrep/rules/*.yaml by `make bundle`.
+# Edit the individual rule files and regenerate.
+#
+# The gate does not load this file; it reads rules/semgrep/rules/ directly.
+# This bundle exists for consumers wiring the rules into their own semgrep
+# setup with a single --config argument.
+rules:
+- id: ratchet-except-swallows-silently
+  languages:
+  - python
+  severity: ERROR
+  message: "This handler neither logs nor re-raises: the error disappears. Use logger.exception(...) so\
+    \ the traceback survives, or re-raise. If this is a deliberate fail-open boundary, it still has to\
+    \ log a reason. Measured: \"caught exception loses the traceback\" is the highest-recurrence finding\
+    \ in the corpus (320 distinct PRs). ruff TRY400/BLE001/S110/S112 cover the `logger.error`, bare-except\
+    \ and `pass`/`continue` shapes; this rule covers the remainder \u2014 `except X: return None` / `return\
+    \ []` / `return {}` \u2014 which no ruff code reports."
+  metadata:
+    category: CONVENTION_DRIFT M2
+    measured-distinct-prs: 320
+    severity-rank: 1
+    phase: 0
+    validate: "FIXTURES REQUIRED \u2014 the pattern-not/ellipsis interaction inside except bodies is the\
+      \ single most likely thing in this file to misfire."
+  patterns:
+  - pattern: "try:\n    ...\nexcept $EXC:\n    ...\n"
+  - pattern-not: "try:\n    ...\nexcept $EXC:\n    ...\n    raise ...\n"
+  - pattern-not: "try:\n    ...\nexcept $EXC:\n    ...\n    raise\n"
+  - pattern-not: "try:\n    ...\nexcept $EXC:\n    ...\n    $LOG.exception(...)\n"
+  - pattern-not: "try:\n    ...\nexcept $EXC:\n    ...\n    $LOG.error(...)\n"
+  - pattern-not: "try:\n    ...\nexcept $EXC:\n    ...\n    $LOG.warning(...)\n"
+  - pattern-not: "try:\n    ...\nexcept $EXC:\n    ...\n    $LOG.critical(...)\n"
+  paths:
+    include:
+    - '**/*.py'
+- id: ratchet-gha-unpinned-action-ref
+  languages:
+  - generic
+  severity: WARNING
+  message: 'Third-party action referenced by a mutable tag instead of a commit SHA. A mutable action in
+    a workflow that holds write permissions or secrets is a supply-chain hole; one audited PR ("mutable
+    actions hold write access") merged unresolved. Pin to a full 40-character SHA. Shipped at WARNING
+    deliberately: the existing violation count across 24 repos is unmeasured, and a hard fail on day one
+    is how a gate gets bypassed rather than fixed.'
+  metadata:
+    category: SECURITY M7
+    phase: 0
+    promote-to-error-when: baseline measured and existing refs pinned
+  patterns:
+  - pattern-regex: (?m)^\s*-\s*uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@\S+
+  - pattern-not-regex: (?m)^\s*-\s*uses:\s*(actions|github)/[A-Za-z0-9._-]+@\S+
+  paths:
+    include:
+    - '**/.github/workflows/*.yml'
+    - '**/.github/workflows/*.yaml'
+- id: ratchet-gha-untrusted-checkout-with-secrets
+  languages:
+  - generic
+  severity: ERROR
+  message: 'A workflow triggered by `pull_request_target` (or `workflow_run`) that checks out the PR head
+    ref executes untrusted code with the base repo''s secrets. Measured three times in the audit: PR-controlled
+    workload submission; PR code replacing a deployment manifest so an installation token becomes a workflow
+    output; a mutable CLI receiving deploy credentials. All three merged with the thread unresolved. Check
+    out the base ref, or move the privileged step to a separate workflow that never checks out PR code.'
+  metadata:
+    category: SECURITY M7, tier S1
+    measured-findings: 19
+    shipped-unresolved: true
+    phase: 0
+    validate: "FIXTURES REQUIRED \u2014 this regex pair is file-scoped, not step-scoped, so it will flag\
+      \ a workflow where the two constructs are unrelated. Tighten with a per-job check before promoting\
+      \ to ERROR."
+  patterns:
+  - pattern-regex: (?s)(pull_request_target|workflow_run).*?uses:\s*actions/checkout@.*?ref:\s*\$\{\{\s*github\.event\.pull_request\.head
+  paths:
+    include:
+    - '**/.github/workflows/*.yml'
+    - '**/.github/workflows/*.yaml'
+- id: ratchet-k8s-latest-image-tag
+  languages:
+  - generic
+  severity: ERROR
+  message: Container image pinned to `:latest`. Every sibling manifest in this tree uses the IMG_TAG placeholder;
+    `:latest` produces a green apply that leaves the service on whatever the node already cached. Measured
+    on 18 distinct PRs.
+  metadata:
+    category: BROKEN repeat-offender
+    measured-distinct-prs: 18
+    phase: 0
+    validate: fixture per manifest flavour (k8s Deployment, Argo workflow template)
+  patterns:
+  - pattern-regex: (?m)^\s*(-\s*)?image:\s*\S+:latest\s*$
+  paths:
+    include:
+    - '**/infra/**/*.yaml'
+    - '**/infra/**/*.yml'
+    - '**/kustomization.yaml'
+    - '**/values.yaml'
+- id: ratchet-mock-patch-without-autospec
+  languages:
+  - python
+  severity: WARNING
+  message: "`patch()` without `autospec=True` creates a double that accepts any signature, so the test\
+    \ keeps passing after the real collaborator's signature changes. Measured as TEST_GAP M11 \u2014 only\
+    \ 10 distinct PRs, but the highest severity rank in the bucket: mean 5.2 fix commits and 9,413 additions\
+    \ on the PRs carrying it. One audited pull request patched a private helper across eleven tests, so\
+    \ the suite exercised a method that in production could only raise."
+  metadata:
+    category: TEST_GAP M11
+    measured-distinct-prs: 10
+    severity-rank: 1
+    phase: 1
+    validate: existing-violation count is unmeasured; ship at WARNING, count, then promote under the diff-scoped
+      baseline.
+  patterns:
+  - pattern-either:
+    - pattern: mock.patch($TARGET)
+    - pattern: patch($TARGET)
+    - pattern: mock.patch.object($OBJ, $ATTR)
+    - pattern: patch.object($OBJ, $ATTR)
+  - pattern-not: mock.patch($TARGET, autospec=True, ...)
+  - pattern-not: patch($TARGET, autospec=True, ...)
+  - pattern-not: mock.patch.object($OBJ, $ATTR, autospec=True, ...)
+  - pattern-not: patch.object($OBJ, $ATTR, autospec=True, ...)
+  paths:
+    include:
+    - '**/*_test.py'
+    - '**/test_*.py'
+    - tests/**/*.py
+- id: ratchet-no-sdk-client-outside-deps
+  languages:
+  - python
+  severity: ERROR
+  message: "Infrastructure clients are constructed in the wrapper package only (deps/ by convention);\
+    \ feature code imports the wrapper. One wrapper per service \u2014 email, vector store, cache, database,\
+    \ metrics \u2014 is what stops a second, subtly different client appearing in a feature module. If\
+    \ the wrapper genuinely does not cover your case, extend it there. This rule is the backstop for ruff\
+    \ TID251: TID251 sees the import, this sees the construction call when the import is legitimate for\
+    \ a different service in the same module."
+  metadata:
+    category: NON_REUSE M6
+    measured-distinct-prs: 39
+    sev: 123
+    phase: 0
+    validate: FIXTURES REQUIRED
+  patterns:
+  - pattern-either:
+    - pattern: boto3.client("ses", ...)
+    - pattern: boto3.client("sesv2", ...)
+    - pattern: boto3.client("s3", ...)
+    - pattern: boto3.resource(...)
+    - pattern: boto3.Session(...).client(...)
+    - pattern: QdrantClient(...)
+    - pattern: redis.Redis(...)
+    - pattern: redis.asyncio.Redis(...)
+    - pattern: create_engine(...)
+    - pattern: prometheus_client.Counter(...)
+    - pattern: prometheus_client.Histogram(...)
+    - pattern: Fernet(...)
+    - pattern: httpx.AsyncClient(...)
+  paths:
+    exclude:
+    - '**/deps/'
+    include:
+    - '**/*.py'
+- id: ratchet-route-missing-auth-dependency
+  languages:
+  - python
+  severity: ERROR
+  message: 'New route with no authentication dependency. Tier S1 in the security taxonomy: this and missing
+    tenant scope are the only modes whose worst case is a breach-notification event, and both had a CRITICAL
+    external-audit instances (including a BOLA finding) that review missed entirely. Add the auth dependency,
+    or add the path to `.semgrep/public-routes.yaml` with a reviewer named on the entry.'
+  metadata:
+    category: SECURITY M2, tier S1
+    phase: 2
+    blocked-on: A reviewed public-routes allowlist must exist first. Without it this rule fires on every
+      intentionally public route, which is the fastest way to get a security gate disabled. DO NOT ENABLE
+      AS WRITTEN.
+    validate: "FIXTURES REQUIRED, plus the allowlist mechanism, which semgrep cannot express on its own\
+      \ \u2014 this probably has to become a scripts/ci/check_route_auth.py that reads the YAML."
+  patterns:
+  - pattern-either:
+    - pattern: "@$ROUTER.get(...)\ndef $H(...):\n    ...\n"
+    - pattern: "@$ROUTER.post(...)\ndef $H(...):\n    ...\n"
+    - pattern: "@$ROUTER.get(...)\nasync def $H(...):\n    ...\n"
+    - pattern: "@$ROUTER.post(...)\nasync def $H(...):\n    ...\n"
+  - pattern-not: "@$ROUTER.$METHOD(...)\nasync def $H(..., $ARG = Depends(...), ...):\n    ...\n"
+  - pattern-not: "@$ROUTER.$METHOD(..., dependencies=[...], ...)\nasync def $H(...):\n    ...\n"
+- id: ratchet-skip-without-ticket
+  languages:
+  - python
+  severity: ERROR
+  message: 'A skipped test with no reason and no ticket is a permanently green hole. Use `@pytest.mark.skip(reason="TICKET-1234:
+    <what has to be true to unskip>")`. Pair this rule with a skip-count ratchet so the total can only
+    shrink.'
+  metadata:
+    category: TEST_GAP M9
+    measured-distinct-prs: 13
+    phase: 1
+    validate: fixtures for skip / skipif / xfail
+  patterns:
+  - pattern-either:
+    - pattern: '@pytest.mark.skip'
+    - pattern: '@pytest.mark.skip()'
+    - pattern: pytest.skip()
+  - pattern-not: '@pytest.mark.skip(reason="...")'
+  - pattern-not: pytest.skip("...")
+  paths:
+    include:
+    - '**/*_test.py'
+    - '**/test_*.py'
+    - '**/tests/**/*.py'
+- id: ratchet-test-asserts-only-status-code
+  languages:
+  - python
+  severity: ERROR
+  message: "This test asserts the HTTP status and nothing about the response body. A 200 with the wrong\
+    \ payload passes. Assert the contract the caller depends on \u2014 the field, the value, the ordering\
+    \ \u2014 not that the call returned. Measured on 58 distinct PRs, mean 3.5 rework commits and 5,830\
+    \ additions on the PRs carrying it: this mode rides the large, painful, blast-radius changes."
+  metadata:
+    category: TEST_GAP M2
+    measured-distinct-prs: 58
+    severity-rank: 3
+    phase: 1
+    validate: "FIXTURES REQUIRED \u2014 the `pattern-not` must tolerate assertions that reach the body\
+      \ through a local variable, or this fires on correct tests and gets disabled within a week."
+  patterns:
+  - pattern-inside: "def $TEST(...):\n    ...\n"
+  - pattern: assert $RESP.status_code == $CODE
+  - pattern-not-inside: "def $TEST(...):\n    ...\n    assert $RESP.json()\n    ...\n"
+  - pattern-not-inside: "def $TEST(...):\n    ...\n    $BODY = $RESP.json()\n    ...\n"
+  paths:
+    include:
+    - '**/*_test.py'
+    - '**/test_*.py'
+    - '**/tests/**/*.py'
+- id: ratchet-tls-verification-disabled
+  languages:
+  - generic
+  severity: ERROR
+  message: 'TLS verification disabled. Measured instances that merged unresolved: `insecureSkipTLSVerify:
+    true` in a chart, `-k` in a values file, Postgres and OpenSearch host verification off (#2565). None
+    of these are reachable by the current `check-semgrep-security` target, which reads no YAML.'
+  metadata:
+    category: SECURITY M10, tier S3
+    shipped-unresolved: true
+    phase: 0
+    validate: "fixture per flavour; `-k` as a bare token will false-positive on unrelated CLI strings\
+      \ \u2014 confirm against real infra/ files first."
+  patterns:
+  - pattern-either:
+    - pattern-regex: (?m)insecureSkipTLSVerify:\s*true
+    - pattern-regex: (?m)tls_skip_verify:\s*true
+    - pattern-regex: (?m)sslmode\s*[:=]\s*disable
+    - pattern-regex: (?m)^\s*-\s*--insecure-skip-tls-verify
+  paths:
+    include:
+    - '**/infra/**'
+    - '**/values.yaml'
+    - '**/*.yaml'
+    - '**/*.yml'

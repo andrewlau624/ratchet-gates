@@ -1,0 +1,57 @@
+# Custom semgrep rules for defect classes no off-the-shelf ruff/eslint code
+# covers.
+#
+# PROVENANCE: these rules were authored from a review audit of 8,563 pull
+# requests across 23 repositories — they are a STARTER SET, not a standard.
+# Replace any of them. The engine does not care what the rules say; it cares
+# that each one has a fixture proving it still matches.
+#
+# MANDATORY BEFORE ENABLING ANY RULE:
+#   1. Write fixtures with `# ruleid: <id>` and `# ok: <id>` annotations in
+#      rules/semgrep/targets/.
+#   2. `semgrep --test --config rules/semgrep/rules/ rules/semgrep/targets/`
+#   3. Ship at WARNING for two weeks, collect the exception set, then promote
+#      to ERROR.
+#
+# A rule with no fixture is a silent false negative waiting for a refactor:
+# a rule that stops matching reports PASS forever, which is indistinguishable
+# from compliance. That is the single failure mode this whole tool exists to
+# remove, so the fixtures are not optional.
+#
+# RATCHET: do not scan the whole tree and hope. The gate runs:
+#   semgrep scan --config rules/semgrep/rules/ \
+#     --baseline-commit "$(git merge-base origin/main HEAD)" --error
+# This requires actions/checkout with fetch-depth: 0 and a clean worktree at
+# that point in the pipeline (semgrep aborts on unstaged changes). A shallow
+# clone has no merge-base, which semgrep scores as "no new findings" and
+# PASSES — a green check that measured nothing.
+#
+# PATH COVERAGE: every `paths:` block below is an explicit decision. Getting
+# it wrong is measurable and was measured: after convention gates landed in
+# the audited org, function-local imports fell 155 -> 21 on production paths
+# and ROSE to 49 on test paths; hasattr/getattr fell 44 -> 8 in production and
+# rose 1 -> 14 in tests. Excluding tests does not remove the violations, it
+# relocates them. There is no test-file exclusion here except where tests are
+# the explicit target.
+
+rules:
+- id: ratchet-gha-unpinned-action-ref
+  languages:
+  - generic
+  severity: WARNING
+  message: 'Third-party action referenced by a mutable tag instead of a commit SHA. A mutable action in
+    a workflow that holds write permissions or secrets is a supply-chain hole; one audited PR ("mutable
+    actions hold write access") merged unresolved. Pin to a full 40-character SHA. Shipped at WARNING
+    deliberately: the existing violation count across 24 repos is unmeasured, and a hard fail on day one
+    is how a gate gets bypassed rather than fixed.'
+  metadata:
+    category: SECURITY M7
+    phase: 0
+    promote-to-error-when: baseline measured and existing refs pinned
+  patterns:
+  - pattern-regex: (?m)^\s*-\s*uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@\S+
+  - pattern-not-regex: (?m)^\s*-\s*uses:\s*(actions|github)/[A-Za-z0-9._-]+@\S+
+  paths:
+    include:
+    - '**/.github/workflows/*.yml'
+    - '**/.github/workflows/*.yaml'
