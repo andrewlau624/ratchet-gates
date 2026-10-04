@@ -63,7 +63,18 @@ def _run(argv: list[str]) -> int:
     parser.add_argument("--base", help="override the ratchet's base commit")
     parser.add_argument("--profile", help="named profile to start from")
     parser.add_argument("--ruff-codes", help="replace the ruff code set for this run")
-    parser.add_argument("--semgrep-severity", help="ERROR or WARNING")
+    parser.add_argument(
+        "--semgrep-severity",
+        help="which semgrep severities to REPORT (ERROR or WARNING). This is a "
+        "rule filter, not an advisory switch: most bundled rules declare ERROR, "
+        "so WARNING hides them. Use --advisory to adopt without blocking.",
+    )
+    parser.add_argument(
+        "--advisory",
+        action="store_true",
+        help="run every gate and report findings, but always exit 0. The "
+        "honest way to adopt before making the check required.",
+    )
     parser.add_argument(
         "--self-check",
         action="store_true",
@@ -97,6 +108,13 @@ def _run(argv: list[str]) -> int:
             print(f"       ... and {len(result.findings) - 10} more")
     print("---")
     print(RESULT_LINE[verdict])
+    if args.advisory and verdict is not Verdict.CLEAN:
+        print(
+            "ADVISORY MODE: exiting 0 despite the result above. Every gate ran "
+            "and every finding is listed; nothing was filtered out to achieve "
+            "this. Drop --advisory to start blocking."
+        )
+        return 0
     return verdict.exit_code
 
 

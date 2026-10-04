@@ -40,7 +40,7 @@ profile = "default"          # which shipped profile to start from
 codes = ["PLC0415", "TRY400", "UP", "TID251", "ASYNC", "RUF006", "RUF100", "PGH003", "PGH004"]
 
 [semgrep]
-severity        = "ERROR"    # or "WARNING" to run advisory first
+severity        = "ERROR"    # a rule FILTER, not an advisory switch — see below
 bundled_rules   = true       # the 10 rules shipped with the tool
 extra_rule_dirs = [".semgrep"]   # your own, repo-relative
 disabled        = ["ratchet-skip-without-ticket"]
@@ -117,6 +117,16 @@ The last one is the reason for all the others. A run that checks nothing exits
 0 for exactly the same reason a clean run does, so a typo that silently
 disables a gate is indistinguishable from compliance — the defect class this
 tool exists to remove, and one it has shipped twice.
+
+## Adopting without blocking
+
+Use `--advisory` (or the action's `advisory: "true"`). Every gate runs, every
+finding prints, the process exits 0.
+
+`semgrep.severity` is **not** the way to do this. It selects which severities
+report at all, and eight of the ten bundled rules declare `ERROR` — setting it
+to `WARNING` silences them rather than demoting them, and the gate goes green
+having checked almost nothing.
 
 ## Environment variables
 

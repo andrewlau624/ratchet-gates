@@ -50,6 +50,12 @@ you can replace, derive, or switch between per directory.
 - Exit codes are unchanged: `0` clean, `2` new violations, `3` tooling failure.
 
 ### Fixed
+- **`--advisory`, because the documented soft-launch path disabled the gate.**
+  The rollout advice was "ship at `semgrep-severity: WARNING` for two weeks".
+  `--severity` is a rule filter: eight of the ten bundled rules declare
+  `ERROR`, so `WARNING` stopped them reporting at all and the gate went green
+  having checked almost nothing. `--advisory` runs every gate, reports every
+  finding, and exits 0.
 - **`added_lines` merged every file's line numbers into one set**, so a finding
   on line 12 of an untouched file counted as new whenever any file in the diff
   had added a line 12. Now keyed by file.

@@ -146,8 +146,16 @@ Full schema, glob syntax, and the complete list of what the loader refuses:
 
 ## Rolling it out
 
-Ship at `semgrep-severity: WARNING` for two weeks, collect the exception set,
-then promote to `ERROR` and mark the check required.
+Add the workflow but **do not mark the check required yet**, and run it with
+`advisory: "true"` for two weeks. Every gate runs, every finding is reported,
+the job stays green. Collect the exception set, tune `.ratchet-gates.toml`
+against it, then drop `advisory` and mark the check required.
+
+Do **not** use `semgrep-severity: WARNING` for this. It is a rule *filter*, not
+a severity demotion: eight of the ten bundled rules declare `ERROR`, so setting
+it to `WARNING` stops them reporting at all and the gate goes green having
+checked almost nothing. That is the failure this tool exists to remove, so the
+flag that looks like a soft launch is the one that fakes one.
 
 Watch the suppression rate (`noqa`, `nosemgrep`, `eslint-disable`) while you do.
 **A step change in suppressions the week a gate lands means the gate was muted,

@@ -29,6 +29,14 @@ inputs:
     description: "Semgrep severity gate (ERROR / WARNING). Default ERROR."
     required: false
     default: "ERROR"
+  advisory:
+    description: >-
+      Run every gate and report findings without failing the job. This is how
+      to adopt before making the check required. Do NOT use semgrep-severity
+      for this — it filters which rules report at all, so WARNING hides every
+      rule that declares ERROR rather than demoting it.
+    required: false
+    default: "false"
   profile:
     description: >-
       Named profile to start from (`default`, `minimal`). The repository's
@@ -62,6 +70,7 @@ runs:
       env:
         BASE: ${{ inputs.base }}
         PROFILE: ${{ inputs.profile }}
+        ADVISORY: ${{ inputs.advisory }}
         RUFF_CODES_INPUT: ${{ inputs.ruff-codes }}
       run: |
         # Export only when non-empty. Exporting an empty value would shadow the
@@ -74,6 +83,7 @@ runs:
           --repo "${{ github.workspace }}" \
           ${BASE:+--base "$BASE"} \
           ${PROFILE:+--profile "$PROFILE"} \
+          $([ "$ADVISORY" = "true" ] && echo --advisory) \
           --semgrep-severity "${{ inputs.semgrep-severity }}" 2>&1)"
         rc=$?
         set -e
