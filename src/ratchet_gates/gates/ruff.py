@@ -9,7 +9,13 @@ from pathlib import Path
 
 from ratchet_gates.git import run
 from ratchet_gates.tools import resolve_tool
-from ratchet_gates.types import GateContext, GateName, GateResult, GateStatus
+from ratchet_gates.types import (
+    Finding,
+    GateContext,
+    GateName,
+    GateResult,
+    GateStatus,
+)
 
 
 class RuffGate:
@@ -46,7 +52,7 @@ class RuffGate:
         for path in py_files:
             groups[ctx.resolve(path).ruff.codes].append(path)
 
-        findings: list[str] = []
+        findings: list[Finding] = []
         for codes, paths in groups.items():
             if not codes:
                 continue  # this subtree deliberately adds nothing
@@ -74,7 +80,7 @@ class RuffGate:
         ctx: GateContext,
         codes: tuple[str, ...],
         paths: list[str],
-    ) -> list[str] | GateResult:
+    ) -> list[Finding] | GateResult:
         env = dict(
             os.environ,
             PATH=":".join([str(Path(ruff).parent), os.environ.get("PATH", "")]),
@@ -106,13 +112,20 @@ class RuffGate:
                 self.name, GateStatus.TOOLING_FAILURE, "ruff output was not JSON"
             )
 
-        out: list[str] = []
+        out: list[Finding] = []
         for item in reported:
             path = _relative(ctx.repo, item.get("filename", ""))
             row = item.get("location", {}).get("row")
             if row not in ctx.added_lines.get(path, frozenset()):
                 continue  # the ratchet: not a line this branch wrote
-            out.append(f"{path}:{row} {item.get('code')} {item.get('message')}")
+            out.append(
+                Finding(
+                    path=path,
+                    line=row,
+                    code=str(item.get("code") or ""),
+                    message=str(item.get("message") or ""),
+                )
+            )
         return out
 
 

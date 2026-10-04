@@ -29,6 +29,12 @@ inputs:
     description: "Semgrep severity gate (ERROR / WARNING). Default ERROR."
     required: false
     default: "ERROR"
+  comment:
+    description: >-
+      Post (and keep updating) one sticky comment on the pull request with the
+      gate result. Needs `pull-requests: write`. Set "false" for log-only.
+    required: false
+    default: "true"
   advisory:
     description: >-
       Run every gate and report findings without failing the job. This is how
@@ -48,6 +54,9 @@ inputs:
     default: ""
 
 outputs:
+  report:
+    description: "Path to the machine-readable run record (JSON)"
+    value: ${{ steps.gates.outputs.report }}
   result:
     description: "CLEAN | NEW_VIOLATIONS | TOOLING_FAILURE"
     value: ${{ steps.gates.outputs.result }}
@@ -84,6 +93,7 @@ runs:
           ${BASE:+--base "$BASE"} \
           ${PROFILE:+--profile "$PROFILE"} \
           $([ "$ADVISORY" = "true" ] && echo --advisory) \
+          --json-out "$RUNNER_TEMP/ratchet-gates-run.json" \
           --semgrep-severity "${{ inputs.semgrep-severity }}" 2>&1)"
         rc=$?
         set -e
@@ -96,10 +106,59 @@ runs:
         {
           echo "result=$result"
           echo "exit-code=$rc"
+          echo "report=$RUNNER_TEMP/ratchet-gates-run.json"
           echo "summary<<RATCHET_GATES_SUMMARY_EOF"
           printf '%s\n' "$out"
           echo "RATCHET_GATES_SUMMARY_EOF"
         } >> "$GITHUB_OUTPUT"
+
+    # Renders from the run record, so the summary and the comment cannot
+    # disagree with the log about what was found.
+    - name: Job summary
+      if: always()
+      shell: bash
+      run: |
+        report="$RUNNER_TEMP/ratchet-gates-run.json"
+        [ -f "$report" ] || exit 0
+        PYTHONPATH="${{ github.action_path }}/src" python3 -m ratchet_gates \
+          report "$report" --one >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload run record
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ratchet-gates-run-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/ratchet-gates-run.json
+        if-no-files-found: ignore
+        retention-days: 90
+
+    - name: Comment on the pull request
+      if: always() && inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        report="$RUNNER_TEMP/ratchet-gates-run.json"
+        [ -f "$report" ] || exit 0
+        marker="<!-- ratchet-gates -->"
+        body="$(PYTHONPATH="${{ github.action_path }}/src" python3 -m ratchet_gates \
+          report "$report" --one)"
+        printf '%s\n\n%s\n' "$marker" "$body" > "$RUNNER_TEMP/comment.md"
+
+        # One sticky comment, updated in place. A new comment per push turns
+        # the gate into noise people mute, which is the same outcome as a
+        # gate that does not run.
+        existing="$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+          --jq "[.[] | select(.body | startswith(\"$marker\")) | .id] | first // empty")"
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/$REPO/issues/comments/$existing" \
+            -F body=@"$RUNNER_TEMP/comment.md" >/dev/null
+        else
+          gh api -X POST "repos/$REPO/issues/$PR/comments" \
+            -F body=@"$RUNNER_TEMP/comment.md" >/dev/null
+        fi
 
     - name: Enforce gate verdict
       shell: bash

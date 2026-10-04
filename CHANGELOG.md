@@ -9,6 +9,30 @@ The floating `v1` tag always points at the newest `v1.x.y` release, so
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-04
+
+Makes an advisory rollout observable. Previously a run told you about one
+pull request and left no trace, which is enough to block on and not enough
+to decide what to block on.
+
+### Added
+- **`--json-out PATH`** writes a machine-readable run record: verdict, the
+  policy chain that produced it, and every finding with path, line, code and
+  message.
+- **`ratchet-gates report`** folds many records. Ranks what fires by *distinct
+  runs* rather than raw count — twenty hits in one pull request is a refactor,
+  one hit in twenty pull requests is a rule — and lists configured codes that
+  have **never fired**, which is the set to delete before making the check
+  required.
+- **The action now reports where you already are**: a job summary on every
+  run, one sticky pull-request comment updated in place (`comment: "false"`
+  to opt out), and the run record uploaded as a 90-day artifact. All three
+  render from the same record, so they cannot disagree with the log.
+
+### Changed
+- Findings are a structured `Finding(path, line, code, message)` instead of a
+  preformatted string, so nothing has to parse the tool's own output back.
+
 ## [0.2.1] — 2026-10-04
 
 See 0.2.0; this adds `--advisory` and corrects the rollout instructions.
@@ -97,6 +121,7 @@ CI.
 - Exit codes: `0` clean, `2` new violations, `3` tooling failure. A gate tool
   that cannot run is a failure, not a pass.
 
-[Unreleased]: https://github.com/andrewlau624/ratchet-gates/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/andrewlau624/ratchet-gates/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/andrewlau624/ratchet-gates/releases/tag/v0.3.0
 [0.2.0]: https://github.com/andrewlau624/ratchet-gates/releases/tag/v0.2.0
 [0.1.0]: https://github.com/andrewlau624/ratchet-gates/releases/tag/v0.1.0

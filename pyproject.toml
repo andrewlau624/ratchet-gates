@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ratchet-gates"
-version = "0.2.1"
+version = "0.3.0"
 description = "Ratcheted deterministic code-quality gates: fail only on violations the diff introduced"
 requires-python = ">=3.11"
 

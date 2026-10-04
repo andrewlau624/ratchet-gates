@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from ratchet_gates.types import GateContext, GateName, GateResult, GateStatus
+from ratchet_gates.types import (
+    Finding,
+    GateContext,
+    GateName,
+    GateResult,
+    GateStatus,
+)
 
 
 class BannedApiGate:
@@ -17,7 +23,7 @@ class BannedApiGate:
     name = GateName.BANNED_API
 
     def run(self, ctx: GateContext) -> GateResult:
-        findings: list[str] = []
+        findings: list[Finding] = []
         checked = 0
         for path in ctx.changed_files:
             if not path.endswith(".py"):
@@ -40,8 +46,12 @@ class BannedApiGate:
                         (f"import {module}", f"from {module}")
                     ):
                         findings.append(
-                            f"{path}:{number}: imports {module} directly; "
-                            f"use {wrapper}"
+                            Finding(
+                                path=path,
+                                line=number,
+                                code=f"banned-import:{module}",
+                                message=f"imports {module} directly; use {wrapper}",
+                            )
                         )
         if not checked:
             return GateResult(

@@ -64,11 +64,46 @@ class Severity(StrEnum):
 
 
 @dataclass(frozen=True)
+class Finding:
+    """One violation, structured.
+
+    Kept as fields rather than a preformatted line so the same finding can be
+    rendered for a job log, counted in an aggregate report, and serialised to
+    JSON without anything having to parse its own output back.
+    """
+
+    path: str
+    line: int | None
+    code: str
+    message: str
+
+    def render(self) -> str:
+        where = f"{self.path}:{self.line}" if self.line is not None else self.path
+        return f"{where} {self.code} {self.message}".rstrip()
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "line": self.line,
+            "code": self.code,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
 class GateResult:
     name: GateName
     status: GateStatus
     detail: str = ""
-    findings: tuple[str, ...] = ()
+    findings: tuple[Finding, ...] = ()
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "gate": self.name.value,
+            "status": self.status.value,
+            "detail": self.detail,
+            "findings": [f.as_dict() for f in self.findings],
+        }
 
 
 def verdict_of(results: list[GateResult]) -> Verdict:

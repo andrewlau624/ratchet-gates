@@ -8,6 +8,7 @@ is a handful of lines because the work lives behind one named hop:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -16,10 +17,16 @@ from ratchet_gates.config.loader import PROFILES_DIR
 from ratchet_gates.gates import GateService
 from ratchet_gates.learn.render import render_toml
 from ratchet_gates.learn.service import LearnService
+from ratchet_gates.report import (
+    ReportService,
+    RunReport,
+    render_aggregate,
+    render_run_markdown,
+)
 from ratchet_gates.selfcheck import self_check
 from ratchet_gates.types import ConfigError, GateStatus, Verdict
 
-SUBCOMMANDS = ("learn", "profiles", "config")
+SUBCOMMANDS = ("learn", "profiles", "config", "report")
 
 MARK = {
     GateStatus.PASS: "PASS",
@@ -49,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _profiles(rest)
             case "config":
                 return _config(rest)
+            case "report":
+                return _report(rest)
             case "run":
                 return _run(rest)
     except ConfigError as exc:
@@ -68,6 +77,11 @@ def _run(argv: list[str]) -> int:
         help="which semgrep severities to REPORT (ERROR or WARNING). This is a "
         "rule filter, not an advisory switch: most bundled rules declare ERROR, "
         "so WARNING hides them. Use --advisory to adopt without blocking.",
+    )
+    parser.add_argument(
+        "--json-out",
+        help="also write a machine-readable run record here. Stack these up "
+        "and `ratchet-gates report` tells you which rules actually fire.",
     )
     parser.add_argument(
         "--advisory",
@@ -103,9 +117,23 @@ def _run(argv: list[str]) -> int:
     for result in results:
         print(f"[{MARK[result.status]}] {result.name.value}: {result.detail}")
         for finding in result.findings[:10]:
-            print(f"       {finding}")
+            print(f"       {finding.render()}")
         if len(result.findings) > 10:
             print(f"       ... and {len(result.findings) - 10} more")
+    if args.json_out:
+        ReportService().write(
+            RunReport(
+                repo=str(repo),
+                base=base,
+                verdict=verdict,
+                advisory=args.advisory,
+                policy=service.config.root.source,
+                gates=tuple(results),
+                context=_ci_context(),
+            ),
+            Path(args.json_out),
+        )
+
     print("---")
     print(RESULT_LINE[verdict])
     if args.advisory and verdict is not Verdict.CLEAN:
@@ -200,6 +228,56 @@ def _config(argv: list[str]) -> int:
         for override in resolved.overrides:
             print(f"  #{override.index} {', '.join(override.paths)}")
     return 0
+
+
+def _report(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="ratchet-gates report")
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        type=Path,
+        help="run records written by --json-out, or directories of them",
+    )
+    parser.add_argument("--repo", default=".", help="repo whose policy to compare against")
+    parser.add_argument("--markdown", action="store_true")
+    parser.add_argument(
+        "--one",
+        action="store_true",
+        help="render a single run (for a job summary or PR comment)",
+    )
+    args = parser.parse_args(argv)
+
+    service = ReportService()
+    reports = service.load(args.paths)
+    if not reports:
+        print("no run records found", file=sys.stderr)
+        return 1
+    if args.one:
+        print(render_run_markdown(reports[-1]), end="")
+        return 0
+
+    configured = set(
+        ConfigLoader(Path(args.repo).resolve()).load().root.ruff.codes
+    )
+    print(
+        render_aggregate(
+            service.aggregate(reports, configured), markdown=args.markdown
+        ),
+        end="",
+    )
+    return 0
+
+
+def _ci_context() -> dict[str, str]:
+    """Whatever the CI provider will tell us, so a record is traceable."""
+    keys = {
+        "repository": "GITHUB_REPOSITORY",
+        "ref": "GITHUB_REF_NAME",
+        "sha": "GITHUB_SHA",
+        "run_id": "GITHUB_RUN_ID",
+        "actor": "GITHUB_ACTOR",
+    }
+    return {name: os.environ[var] for name, var in keys.items() if os.environ.get(var)}
 
 
 if __name__ == "__main__":

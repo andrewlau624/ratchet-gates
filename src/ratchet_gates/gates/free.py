@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from ratchet_gates.git import run
-from ratchet_gates.types import GateContext, GateName, GateResult, GateStatus
+from ratchet_gates.types import (
+    Finding,
+    GateContext,
+    GateName,
+    GateResult,
+    GateStatus,
+)
 
 
 class FreeGate:
@@ -18,7 +24,7 @@ class FreeGate:
     name = GateName.FREE_GATES
 
     def run(self, ctx: GateContext) -> GateResult:
-        findings: list[str] = []
+        findings: list[Finding] = []
         ran_any = False
 
         for path in ctx.changed_files:
@@ -33,7 +39,14 @@ class FreeGate:
                 continue
             for number, line in enumerate(text.splitlines(), start=1):
                 if "image:" in line and ":latest" in line:
-                    findings.append(f"{path}:{number}: :latest image tag")
+                    findings.append(
+                        Finding(
+                            path=path,
+                            line=number,
+                            code="latest-image-tag",
+                            message="container image pinned to :latest",
+                        )
+                    )
 
         if ctx.root_profile.free_gates.alembic_single_head:
             alembic = ctx.repo / "alembic"
@@ -45,7 +58,14 @@ class FreeGate:
                         [ln for ln in heads.stdout.splitlines() if ln.strip()]
                     )
                     if count > 1:
-                        findings.append(f"alembic: {count} heads (must be 1)")
+                        findings.append(
+                            Finding(
+                                path="alembic",
+                                line=None,
+                                code="alembic-multi-head",
+                                message=f"{count} migration heads (must be 1)",
+                            )
+                        )
 
         if not ran_any:
             return GateResult(

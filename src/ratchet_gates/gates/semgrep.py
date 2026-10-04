@@ -8,7 +8,13 @@ from pathlib import Path
 
 from ratchet_gates.git import run
 from ratchet_gates.tools import bundled_rules_dir, resolve_tool
-from ratchet_gates.types import GateContext, GateName, GateResult, GateStatus
+from ratchet_gates.types import (
+    Finding,
+    GateContext,
+    GateName,
+    GateResult,
+    GateStatus,
+)
 
 
 class SemgrepGate:
@@ -64,7 +70,7 @@ class SemgrepGate:
                 f"semgrep output was not JSON (exit {proc.returncode})",
             )
 
-        findings: list[str] = []
+        findings: list[Finding] = []
         suppressed = 0
         for item in payload.get("results", []):
             path = item.get("path", "")
@@ -72,8 +78,17 @@ class SemgrepGate:
             if _is_disabled(check_id, ctx.resolve(path).semgrep.disabled):
                 suppressed += 1
                 continue
-            line = item.get("start", {}).get("line", "?")
-            findings.append(f"{path}:{line} {_short(check_id)}")
+            line = item.get("start", {}).get("line")
+            findings.append(
+                Finding(
+                    path=path,
+                    line=line if isinstance(line, int) else None,
+                    code=_short(check_id),
+                    message=(item.get("extra", {}).get("message") or "")
+                    .strip()
+                    .split("\n")[0][:200],
+                )
+            )
 
         detail = f"{len(findings)} new finding(s)"
         if suppressed:

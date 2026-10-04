@@ -147,7 +147,17 @@ Full schema, glob syntax, and the complete list of what the loader refuses:
 ## Rolling it out
 
 Add the workflow but **do not mark the check required yet**, and run it with
-`advisory: "true"` for two weeks. Every gate runs, every finding is reported,
+`advisory: "true"` for two weeks. Every run posts a summary and a sticky
+pull-request comment, and uploads a JSON record as an artifact. Pull the
+records down and `ratchet-gates report` tells you what actually fires:
+
+```bash
+gh run download --name 'ratchet-gates-run-*' --dir runs/
+ratchet-gates report runs/
+```
+
+It ranks by **distinct runs**, not raw count, and lists codes that have never
+fired — delete those before you start blocking. Every gate runs, every finding is reported,
 the job stays green. Collect the exception set, tune `.ratchet-gates.toml`
 against it, then drop `advisory` and mark the check required.
 
@@ -185,6 +195,9 @@ ratchet-gates --self-check                  # run the tool's own test suite
 ratchet-gates learn --repo . --out .ratchet-gates.toml   # derive a policy
 ratchet-gates config --path src/app.py      # which policy applies here, and why
 ratchet-gates profiles                      # what you can start from
+
+ratchet-gates --repo . --json-out run.json  # leave a machine-readable record
+ratchet-gates report runs/                  # what fires, and what never has
 ```
 
 | Exit code | Meaning |
