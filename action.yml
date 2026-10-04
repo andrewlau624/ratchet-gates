@@ -29,6 +29,15 @@ inputs:
     description: "Semgrep severity gate (ERROR / WARNING). Default ERROR."
     required: false
     default: "ERROR"
+  profile:
+    description: >-
+      Named profile to start from (`default`, `minimal`). The repository's
+      own .ratchet-gates.toml, if present, is layered on top of it and wins.
+      There is deliberately no input for pointing at a different config FILE:
+      the policy a pull request is judged against should be visible in the
+      repository being judged.
+    required: false
+    default: ""
 
 outputs:
   result:
@@ -52,6 +61,7 @@ runs:
       shell: bash
       env:
         BASE: ${{ inputs.base }}
+        PROFILE: ${{ inputs.profile }}
         RUFF_CODES_INPUT: ${{ inputs.ruff-codes }}
       run: |
         # Export only when non-empty. Exporting an empty value would shadow the
@@ -60,9 +70,10 @@ runs:
           export RATCHET_GATES_RUFF_CODES="$RUFF_CODES_INPUT"
         fi
         set +e
-        out="$(python3 "${{ github.action_path }}/src/ratchet_gates/cli.py" \
+        out="$(PYTHONPATH="${{ github.action_path }}/src" python3 -m ratchet_gates \
           --repo "${{ github.workspace }}" \
           ${BASE:+--base "$BASE"} \
+          ${PROFILE:+--profile "$PROFILE"} \
           --semgrep-severity "${{ inputs.semgrep-severity }}" 2>&1)"
         rc=$?
         set -e

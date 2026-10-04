@@ -46,15 +46,30 @@ produces a wall of false positives gets routed around within a week.
 
 The bundled rules came from a review audit of 8,563 pull requests across 23
 repositories, so they encode one organisation's recurring defects. Yours differ.
-Every rule is replaceable:
+The policy is **data the tool carries**, not behaviour compiled into it:
 
-- Swap the ruff code set with the `ruff-codes` input.
-- Add, edit, or delete files in `rules/semgrep/rules/` — each needs a fixture in
-  `rules/semgrep/targets/`, which `make self-check` enforces.
-- Point `RATCHET_GATES_BANNED_APIS` at your own wrapper layout.
+```bash
+ratchet-gates learn --repo . --out .ratchet-gates.toml
+```
 
-The engine does not care what the rules say. It cares that each one has a
-fixture proving it still matches, and that findings are scoped to added lines.
+`learn` reads your ruff config, your directory layout, the semgrep rules you
+already maintain, and your `AGENTS.md` / `CONTRIBUTING.md`, and writes a profile
+that reflects your repository. Add `--from-history` and it also mines your
+merged pull requests for the conventions reviewers actually enforce — usually a
+different set from the ones written down.
+
+Two rules govern what it writes, and they are the point of the command:
+
+- **A code your ruff config explicitly ignores is never proposed.** An ignore is
+  a standing decision, not an oversight to correct.
+- **Anything inferred rather than read is commented out, with its evidence
+  attached.** Prose states an intention without establishing that a given lint
+  code is the right way to enforce it, so adopting one is your edit, not the
+  tool's.
+
+Nothing is required. With no config file the gate behaves exactly as it does out
+of the box, and `--profile minimal` starts from ruff alone if you want the
+ratchet's adoption property without anyone else's rule set.
 
 ## Install
 
@@ -92,31 +107,42 @@ measured nothing.
 
 ## Configuration
 
-Action inputs:
+The whole policy lives in one `.ratchet-gates.toml` at the repo root, and a
+monorepo varies it by subtree:
 
-| Input | Default | Effect |
-|---|---|---|
-| `base` | merge-base with the default branch | Override the ratchet baseline. Needed only for unusual branch topology. |
-| `ruff-codes` | the bundled set | **Replaces** the bundled code set entirely. |
-| `semgrep-severity` | `ERROR` | Set to `WARNING` to run advisory first. |
+```toml
+[ruff]
+codes = ["PLC0415", "TRY400", "ASYNC", "RUF100"]
 
-Environment variables, settable at the job level:
+[semgrep]
+severity      = "ERROR"
+bundled_rules = true
+extra_rule_dirs = [".semgrep"]      # rules you already maintain
 
-| Variable | Default | Effect |
-|---|---|---|
-| `RATCHET_GATES_RUFF_CODES` | `PLC0415,TRY400,UP,TID251,ASYNC,RUF006,RUF100,PGH003,PGH004` | Same as the `ruff-codes` input. |
-| `RATCHET_GATES_BANNED_APIS` | empty — gate off | Comma-separated `module:canonical_path` pairs. |
+[banned_api]
+redis = "deps/redis.py"             # a second redis client becomes a CI failure
 
-```yaml
-      - uses: andrewlau624/ratchet-gates@v1
-        env:
-          RATCHET_GATES_BANNED_APIS: boto3:deps/aws.py,redis:deps/redis.py
+[[override]]
+paths = ["tests/**"]
+ruff  = { remove = ["TID251"] }
 ```
 
-`banned-api` is opt-in because wrapper layout is project-specific. It turns
-"someone wrote a second S3 client" from a thing a reviewer has to notice into a
-thing CI refuses. Ruff's `TID251` covers the same class declaratively if you
-prefer to configure it there.
+`ratchet-gates config --path some/file.py` prints the policy that applies to any
+path and the chain of layers that produced it; every gate run prints the same
+chain on its first line, so the log answers "which policy ran" without a
+directory walk.
+
+Anything the tool cannot understand — an unknown key, contradictory merge
+directives, a policy that enables no gates — **aborts with exit 3** rather than
+resolving to something plausible. A run that checks nothing exits 0 for the same
+reason a clean run does, which is how a silent disable passes for compliance.
+
+Action inputs: `base`, `profile`, `ruff-codes`, `semgrep-severity`. Environment:
+`RATCHET_GATES_RUFF_CODES`, `RATCHET_GATES_BANNED_APIS`. Precedence runs
+built-in → named profile → config file → overrides → environment → flags.
+
+Full schema, glob syntax, and the complete list of what the loader refuses:
+**[docs/configuration.md](docs/configuration.md)**.
 
 ## Rolling it out
 
@@ -145,8 +171,12 @@ cd ratchet-gates && make install
 ln -s "$PWD/.venv/bin/ratchet-gates" /usr/local/bin/ratchet-gates   # optional
 
 ratchet-gates --repo .                      # run the gates here
+ratchet-gates --repo . --profile minimal    # ruff only, no bundled rules
 ratchet-gates --self-check                  # run the tool's own test suite
-ratchet-gates --repo . --semgrep-severity WARNING
+
+ratchet-gates learn --repo . --out .ratchet-gates.toml   # derive a policy
+ratchet-gates config --path src/app.py      # which policy applies here, and why
+ratchet-gates profiles                      # what you can start from
 ```
 
 | Exit code | Meaning |
@@ -222,15 +252,18 @@ outside this repository.
 ## Repository layout
 
 ```
-src/ratchet_gates/cli.py              the four gates and the ratchet
-action.yml                            composite GitHub Action
-scripts/build_bundle.py               regenerates the consolidated rule bundle
-rules/ruff.toml                       example ruff config (not a dependency)
-rules/semgrep/rules/<id>.yaml         one file per custom rule — source of truth
-rules/semgrep/targets/                one fixture per rule, run by semgrep --test
-rules/semgrep/bundle.yml              generated single-file copy — not loaded by the gate
-rules/reviewer-prompt.md              the judgment layer CI cannot reach
-tests/test_gates.py                   ratchet semantics in isolated git repos
+src/ratchet_gates/
+  cli.py            argparse and exit codes — no logic
+  types.py          gate outcomes and the resolved policy
+  git.py            the ratchet: base commit, changed files, added lines
+  config/           discover -> parse strictly -> merge -> resolve per path
+  gates/            one file per gate, plus the service that runs them
+  learn/            inspectors that derive a policy from a repository
+action.yml          composite GitHub Action
+rules/semgrep/rules/<id>.yaml   one file per custom rule — source of truth
+rules/semgrep/targets/          one fixture per rule, run by semgrep --test
+rules/reviewer-prompt.md        the judgment layer CI cannot reach
+docs/configuration.md           full config schema
 ```
 
 Python 3.11+. Requires `ruff` and `semgrep` on PATH; the Action installs both.

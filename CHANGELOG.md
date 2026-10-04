@@ -9,6 +9,56 @@ The floating `v1` tag always points at the newest `v1.x.y` release, so
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-03
+
+Conventions become data the tool carries rather than behaviour compiled into
+it. The bundled rules were one organisation's; now they are a starting point
+you can replace, derive, or switch between per directory.
+
+### Added
+- **`.ratchet-gates.toml`** — one file at the repo root configures the ruff
+  code set, semgrep rule sources and severity, the banned-API table, and the
+  free gates. With no file present the gate behaves exactly as in 0.1.0.
+- **`[[override]]` blocks** scope policy to path globs for monorepos. All
+  matching blocks apply in declaration order, later ones winning — order
+  rather than a most-specific-pattern heuristic, because readers and
+  implementations disagree about which of two globs is more specific.
+- **`ratchet-gates learn`** derives a profile from a repository: its ruff
+  config, directory layout, existing semgrep rules, and contributing docs.
+  `--from-history` additionally mines merged pull requests for the conventions
+  reviewers enforce in practice. A code the repo explicitly ignores is never
+  proposed, and anything inferred rather than read is written commented out
+  with its evidence.
+- **Named profiles** (`default`, `minimal`) with `--profile` or
+  `profile = "..."`, and `ratchet-gates profiles` to list them.
+- **`ratchet-gates config --path <file>`** prints the policy for any path and
+  the chain of layers that produced it. Every gate run prints the same chain.
+- `docs/configuration.md`: full schema, glob syntax, and what the loader
+  refuses.
+
+### Changed
+- `cli.py` is argparse and exit codes only. Gates, config resolution, the
+  ratchet, and `learn` are separate subsystems; each gate is one file behind
+  `GateService`.
+- Gate outcomes are a `GateStatus` enum. `main()` previously decided tooling
+  failure by matching `GateResult.detail` against three string literals, so
+  rewording a message would have downgraded a tooling failure to a pass.
+- A skipped gate now prints `[SKIP]` rather than `[PASS] … SKIPPED:`, and ruff
+  findings are reported with repo-relative paths.
+- The action invokes `python3 -m ratchet_gates` instead of running `cli.py` as
+  a script, which the package-relative imports require.
+- Exit codes are unchanged: `0` clean, `2` new violations, `3` tooling failure.
+
+### Fixed
+- **`added_lines` merged every file's line numbers into one set**, so a finding
+  on line 12 of an untouched file counted as new whenever any file in the diff
+  had added a line 12. Now keyed by file.
+- **A missing bundled rules directory is a tooling failure, not an empty rule
+  set.** `semgrep.bundled_rules` stays a declared intention all the way to the
+  gate, so a wheel install that has no rules fails loudly instead of reporting
+  a clean scan. Closes the silent pass in issue #1 (the packaging gap itself
+  remains).
+
 ## [0.1.0] — 2026-10-03
 
 First release. Self-check green; not yet running in a production repository's
@@ -37,5 +87,6 @@ CI.
 - Exit codes: `0` clean, `2` new violations, `3` tooling failure. A gate tool
   that cannot run is a failure, not a pass.
 
-[Unreleased]: https://github.com/andrewlau624/ratchet-gates/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/andrewlau624/ratchet-gates/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/andrewlau624/ratchet-gates/releases/tag/v0.2.0
 [0.1.0]: https://github.com/andrewlau624/ratchet-gates/releases/tag/v0.1.0

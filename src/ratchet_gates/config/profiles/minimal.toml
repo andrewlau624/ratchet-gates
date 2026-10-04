@@ -1,0 +1,21 @@
+# Ruff only. The cautious first adoption: no custom semgrep rules, no free
+# gates, nothing that needs a second tool installed.
+#
+# Start here if you want the ratchet's adoption property — green on day one
+# in a repo full of legacy violations — without also adopting someone else's
+# rule set. Then run `ratchet-gates learn` and grow the policy from your own
+# repository rather than from this file.
+
+[ruff]
+codes = ["PLC0415", "TRY400", "RUF100", "PGH003", "PGH004"]
+
+[semgrep]
+bundled_rules = false
+extra_rule_dirs = []
+disabled = []
+
+[banned_api]
+
+[free_gates]
+latest_image_tag    = false
+alembic_single_head = false

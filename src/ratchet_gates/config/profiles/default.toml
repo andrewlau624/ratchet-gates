@@ -1,0 +1,36 @@
+# The built-in profile: what the gate does with no .ratchet-gates.toml present.
+#
+# These codes and rules came from a review audit of 8,563 pull requests across
+# 23 repositories. They are one organisation's recurring defects, which is to
+# say they are a starting point and not a standard. `ratchet-gates learn` reads
+# your repository and writes a profile that reflects yours instead.
+
+[ruff]
+# Added to the repo's OWN ruff config via lint.extend-select. Nothing the repo
+# already ignores is revoked — re-enabling a code a team deliberately turned
+# off produces a wall of false positives and gets the whole gate routed around.
+codes = [
+  "PLC0415",  # function-local imports
+  "TRY400",   # logger.error in an except block where logger.exception belongs
+  "UP",       # outdated typing / syntax
+  "TID251",   # banned API imports (pairs with [banned_api] below)
+  "ASYNC",    # async correctness
+  "RUF006",   # dangling asyncio tasks
+  "RUF100",   # unused noqa — stops the baseline from rotting
+  "PGH003",   # blanket type: ignore
+  "PGH004",   # blanket noqa
+]
+
+[semgrep]
+severity      = "ERROR"
+bundled_rules = true
+extra_rule_dirs = []
+disabled      = []
+
+# Off by default: the wrapper layout is project-specific, so there is no
+# defensible guess. `learn` fills this in when it finds a wrapper directory.
+[banned_api]
+
+[free_gates]
+latest_image_tag    = true
+alembic_single_head = true

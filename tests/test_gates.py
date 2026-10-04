@@ -6,6 +6,7 @@ tool's own logic, not on the state of any real branch.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,9 +14,6 @@ from pathlib import Path
 import pytest
 
 TOOL_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(TOOL_ROOT / "src"))
-
-from ratchet_gates import cli  # noqa: E402
 
 # Prefer the tool's own venv when present (local runs); in CI the gate
 # toolchain is already on PATH, so this resolves to nothing and is skipped.
@@ -47,16 +45,17 @@ def repo(tmp_path: Path) -> Path:
 
 
 def _run_cli(repo: Path, **extra_env: str) -> subprocess.CompletedProcess[str]:
-    path = cli.os.environ["PATH"]
+    path = os.environ["PATH"]
     if VENV_BIN.is_dir():
         path = f"{VENV_BIN}:{path}"
-    env = dict(cli.os.environ, PATH=path, **extra_env)
+    env = dict(os.environ, PATH=path, **extra_env)
     return subprocess.run(
         [sys.executable, "-m", "ratchet_gates", "--repo", str(repo)],
         cwd=TOOL_ROOT,
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
 
 
@@ -124,3 +123,40 @@ def test_empty_ruff_code_override_falls_back_to_defaults(repo: Path):
     proc = _run_cli(repo, RATCHET_GATES_RUFF_CODES="")
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "PLC0415" in proc.stdout
+
+
+def test_override_scopes_a_code_to_a_subtree(repo: Path):
+    """The same violation must fail at the root and pass under a relaxed path.
+
+    This is the property that makes the tool adoptable by a second team: the
+    policy is data keyed by path, not behaviour compiled into the gate.
+    """
+    (repo / "lib").mkdir()
+    (repo / "lib" / "bad.py").write_text(
+        "def f():\n    import json\n    return json.dumps({})\n"
+    )
+    (repo / "vendored").mkdir()
+    (repo / "vendored" / "bad.py").write_text(
+        "def f():\n    import json\n    return json.dumps({})\n"
+    )
+    (repo / ".ratchet-gates.toml").write_text(
+        '[[override]]\npaths = ["vendored/**"]\nruff = { remove = ["PLC0415"] }\n'
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "both"], cwd=repo, check=True)
+
+    proc = _run_cli(repo)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "lib/bad.py:2 PLC0415" in proc.stdout
+    assert "vendored/bad.py" not in proc.stdout
+
+
+def test_unparseable_config_is_a_tooling_failure_not_a_pass(repo: Path):
+    """A config the tool cannot understand must never resolve to "clean"."""
+    (repo / ".ratchet-gates.toml").write_text('[ruff]\ncodez = ["PLC0415"]\n')
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "typo"], cwd=repo, check=True)
+
+    proc = _run_cli(repo)
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "codez" in proc.stderr
