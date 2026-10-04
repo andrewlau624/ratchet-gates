@@ -9,6 +9,10 @@ The floating `v1` tag always points at the newest `v1.x.y` release, so
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-10-04
+
+See 0.2.0; this adds `--advisory` and corrects the rollout instructions.
+
 ## [0.2.0] — 2026-10-03
 
 Conventions become data the tool carries rather than behaviour compiled into
